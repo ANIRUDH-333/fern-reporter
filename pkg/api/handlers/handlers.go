@@ -1,19 +1,22 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
-
-	"github.com/guidewire/fern-reporter/config"
-	"github.com/guidewire/fern-reporter/pkg/models"
-
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/option"
 	"gorm.io/gorm"
+
+	"github.com/guidewire/fern-reporter/config"
+	"github.com/guidewire/fern-reporter/pkg/models"
 )
 
 type Handler struct {
@@ -228,4 +231,63 @@ func (h *Handler) Ping(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "Fern Reporter is running!",
 	})
+}
+
+func (h *Handler) GetGeminiInsights(c *gin.Context) {
+	// Extract test run data from the request
+	var testRunData struct {
+		ProjectName string `json:"projectName"`
+		TestName    string `json:"testName"`
+		Status      string `json:"status"`
+		Duration    string `json:"duration"`
+	}
+
+	if err := c.ShouldBindJSON(&testRunData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Prepare the prompt for Gemini
+	prompt := fmt.Sprintf("Analyze this test run data and provide insights:\nProject: %s\nTest: %s\nStatus: %s\nDuration: %s",
+		testRunData.ProjectName, testRunData.TestName, testRunData.Status, testRunData.Duration)
+
+	// Call Gemini API
+	response, err := callGeminiAPI(prompt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get insights from Gemini"})
+		return
+	}
+
+	insights := printResponse(response)
+	c.JSON(http.StatusOK, gin.H{"insights": insights})
+}
+
+func callGeminiAPI(prompt string) (*genai.GenerateContentResponse, error) {
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey("AIzaSyA7Djpfu1U2UQjk1pdfSl99ZE0j7OnF_zg"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	model := client.GenerativeModel("gemini-pro")
+	response, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate content: %v", err)
+	}
+
+	return response, nil
+}
+
+func printResponse(resp *genai.GenerateContentResponse) string {
+	var buf bytes.Buffer
+	for _, cand := range resp.Candidates {
+		if cand.Content != nil {
+			for _, part := range cand.Content.Parts {
+				fmt.Fprintln(&buf, part)
+			}
+		}
+	}
+	fmt.Fprintln(&buf, "---")
+	return buf.String()
 }
