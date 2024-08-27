@@ -11,7 +11,7 @@ db:
 server:
   port: :8080
 auth:
-  json-web-keys-endpoint: ""
-  enabled: "true"
+  json-web-keys-endpoint: "https://guidewire-hub.oktapreview.com/oauth2/ausj9ftnbxOqfGU4U0h7/v1/keys"
+  enabled: "false"
   scope-claim-name: "scope"
 header: "Fern Acceptance Test Report"
